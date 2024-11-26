@@ -1,6 +1,7 @@
 use std::error;
 use std::fmt;
 use std::io;
+use std::net::IpAddr;
 use std::str;
 #[cfg(feature = "aio")]
 use std::string::FromUtf8Error;
@@ -313,6 +314,13 @@ pub enum SearchError {
     /// Error parsing URI
     #[cfg(feature = "aio")]
     InvalidUri(hyper::http::uri::InvalidUri),
+    /// Ip spoofing detected error
+    SpoofedIp {
+        /// The IP from which packet was actually received
+        src_ip: IpAddr,
+        /// The IP which the receiving packet pretended to be from
+        url_ip: IpAddr,
+    },
 }
 
 impl From<attohttpc::Error> for SearchError {
@@ -371,6 +379,7 @@ impl fmt::Display for SearchError {
             SearchError::HyperError(ref e) => write!(f, "Hyper Error: {}", e),
             #[cfg(feature = "aio")]
             SearchError::InvalidUri(ref e) => write!(f, "InvalidUri Error: {}", e),
+            SearchError::SpoofedIp { src_ip, url_ip } => write!(f, "Spoofed IP from {src_ip} as {url_ip}"),
         }
     }
 }
@@ -387,6 +396,7 @@ impl error::Error for SearchError {
             SearchError::HyperError(ref e) => Some(e),
             #[cfg(feature = "aio")]
             SearchError::InvalidUri(ref e) => Some(e),
+            SearchError::SpoofedIp { .. } => None,
         }
     }
 }
