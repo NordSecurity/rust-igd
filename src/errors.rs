@@ -405,10 +405,8 @@ pub enum GetGenericPortMappingEntryError {
 impl From<RequestError> for GetGenericPortMappingEntryError {
     fn from(err: RequestError) -> GetGenericPortMappingEntryError {
         match err {
-            RequestError::ErrorCode(code, _) if code == 606 => GetGenericPortMappingEntryError::ActionNotAuthorized,
-            RequestError::ErrorCode(code, _) if code == 713 => {
-                GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid
-            }
+            RequestError::ErrorCode(606, _) => GetGenericPortMappingEntryError::ActionNotAuthorized,
+            RequestError::ErrorCode(713, _) => GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid,
             other => GetGenericPortMappingEntryError::RequestError(other),
         }
     }

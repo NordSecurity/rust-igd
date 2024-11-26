@@ -75,7 +75,7 @@ fn handle_broadcast_resp(from: &SocketAddr, data: &[u8]) -> Result<(SocketAddr, 
     debug!("handling broadcast response from: {}", from);
 
     // Convert response to text
-    let text = std::str::from_utf8(&data).map_err(SearchError::from)?;
+    let text = std::str::from_utf8(data).map_err(SearchError::from)?;
 
     // Parse socket address and path
     let (addr, root_url) = parsing::parse_search_result(text)?;

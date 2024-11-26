@@ -118,7 +118,7 @@ impl Gateway {
             // Fall back to using AddPortMapping with a random port.
             let gateway = self.clone();
             gateway
-                .retry_add_random_port_mapping(protocol, local_addr, lease_duration, &description)
+                .retry_add_random_port_mapping(protocol, local_addr, lease_duration, description)
                 .await
         }
     }
@@ -132,7 +132,7 @@ impl Gateway {
     ) -> Result<u16, AddAnyPortError> {
         for _ in 0u8..20u8 {
             match self
-                .add_random_port_mapping(protocol, local_addr, lease_duration, &description)
+                .add_random_port_mapping(protocol, local_addr, lease_duration, description)
                 .await
             {
                 Ok(port) => return Ok(port),
@@ -247,11 +247,9 @@ impl Gateway {
             .perform_request(
                 messages::DELETE_PORT_MAPPING_HEADER,
                 &messages::format_delete_port_message(
-                    self.control_schema
-                        .get("DeletePortMapping")
-                        .ok_or_else(|| RemovePortError::RequestError(RequestError::UnsupportedAction(
-                            "DeletePortMapping".to_string(),
-                        )))?,
+                    self.control_schema.get("DeletePortMapping").ok_or_else(|| {
+                        RemovePortError::RequestError(RequestError::UnsupportedAction("DeletePortMapping".to_string()))
+                    })?,
                     protocol,
                     external_port,
                 ),

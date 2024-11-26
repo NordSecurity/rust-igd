@@ -53,40 +53,29 @@ where
 }
 
 fn parse_device(device: &Element) -> Option<(String, String)> {
-    let services = device
-        .get_child("serviceList")
-        .map(|service_list| {
-            service_list
-                .children
-                .iter()
-                .filter_map(|child| {
-                    let child = child.as_element()?;
-                    if child.name == "service" {
-                        parse_service(child)
-                    } else {
-                        None
-                    }
-                })
-                .next()
-        })
-        .flatten();
-    let devices = device.get_child("deviceList").map(parse_device_list).flatten();
-    services.or(devices)
-}
-
-fn parse_device_list(device_list: &Element) -> Option<(String, String)> {
-    device_list
-        .children
-        .iter()
-        .filter_map(|child| {
+    let services = device.get_child("serviceList").and_then(|service_list| {
+        service_list.children.iter().find_map(|child| {
             let child = child.as_element()?;
-            if child.name == "device" {
-                parse_device(child)
+            if child.name == "service" {
+                parse_service(child)
             } else {
                 None
             }
         })
-        .next()
+    });
+    let devices = device.get_child("deviceList").and_then(parse_device_list);
+    services.or(devices)
+}
+
+fn parse_device_list(device_list: &Element) -> Option<(String, String)> {
+    device_list.children.iter().find_map(|child| {
+        let child = child.as_element()?;
+        if child.name == "device" {
+            parse_device(child)
+        } else {
+            None
+        }
+    })
 }
 
 fn parse_service(service: &Element) -> Option<(String, String)> {
@@ -606,7 +595,7 @@ fn test_parse_device2() {
     </root>
     "#;
     let result = parse_control_urls(text.as_bytes());
-    assert!(result.is_ok());
+    assert!(result.is_ok(), "result: {result:?}");
     let (control_schema_url, control_url) = result.unwrap();
     assert_eq!(control_url, "/igdupnp/control/WANIPConn1");
     assert_eq!(control_schema_url, "/igdconnSCPD.xml");

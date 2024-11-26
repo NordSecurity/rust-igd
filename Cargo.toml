@@ -2,7 +2,7 @@
 authors = ["Simon Bernier St-Pierre <sbernierstpierre@gmail.com>"]
 description = "Internet Gateway Protocol client"
 documentation = "https://docs.rs/igd/"
-edition = "2018"
+edition = "2021"
 homepage = "https://github.com/sbstp/rust-igd"
 keywords = ["igd", "upnp"]
 license = "MIT"
