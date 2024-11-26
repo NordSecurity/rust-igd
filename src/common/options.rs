@@ -23,6 +23,8 @@ pub struct SearchOptions {
     pub broadcast_address: SocketAddr,
     /// Timeout for a search iteration (defaults to 10s)
     pub timeout: Option<Duration>,
+    /// Http requests timeout (defaults to None)
+    pub http_timeout: Option<Duration>,
 }
 
 impl Default for SearchOptions {
@@ -31,6 +33,7 @@ impl Default for SearchOptions {
             bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
             broadcast_address: "239.255.255.250:1900".parse().unwrap(),
             timeout: Some(Duration::from_secs(10)),
+            http_timeout: None,
         }
     }
 }

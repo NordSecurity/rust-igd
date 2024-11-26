@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use futures::prelude::*;
 use hyper::Client;
@@ -19,18 +20,14 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
 
     send_search_request(&mut socket, options.broadcast_address).await?;
 
-    let search_response = receive_search_response(&mut socket);
-
-    // Receive search response, optionally with a timeout
-    let (response_body, from) = match options.timeout {
-        Some(t) => timeout(t, search_response).await?,
-        None => search_response.await,
-    }?;
+    let (response_body, from) = run_with_timeout(options.timeout, receive_search_response(&mut socket)).await??;
 
     let (addr, root_url) = handle_broadcast_resp(&from, &response_body)?;
 
-    let (control_schema_url, control_url) = get_control_urls(&addr, &root_url).await?;
-    let control_schema = get_control_schemas(&addr, &control_schema_url).await?;
+    let (control_schema_url, control_url) =
+        run_with_timeout(options.http_timeout, get_control_urls(&addr, &root_url)).await??;
+    let control_schema =
+        run_with_timeout(options.http_timeout, get_control_schemas(&addr, &control_schema_url)).await??;
 
     let addr = match addr {
         SocketAddr::V4(a) => Ok(a),
@@ -47,6 +44,16 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
         control_schema_url,
         control_schema,
     })
+}
+
+async fn run_with_timeout<F>(timeout_value: Option<Duration>, fut: F) -> Result<F::Output, SearchError>
+where
+    F: Future + Send,
+{
+    match timeout_value {
+        Some(t) => Ok(timeout(t, fut).await?),
+        None => Ok(fut.await),
+    }
 }
 
 // Create a new search
