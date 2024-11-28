@@ -72,7 +72,7 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
 fn get_control_urls(addr: &SocketAddrV4, root_url: &str) -> Result<(String, String), SearchError> {
     let url = format!("http://{}:{}{}", addr.ip(), addr.port(), root_url);
 
-    match RequestBuilder::try_new(Method::GET, &url) {
+    match RequestBuilder::try_new(Method::GET, url) {
         Ok(request_builder) => {
             let response = request_builder.send()?;
             parsing::parse_control_urls(&response.bytes()?[..])
@@ -84,7 +84,7 @@ fn get_control_urls(addr: &SocketAddrV4, root_url: &str) -> Result<(String, Stri
 fn get_schemas(addr: &SocketAddrV4, control_schema_url: &str) -> Result<HashMap<String, Vec<String>>, SearchError> {
     let url = format!("http://{}:{}{}", addr.ip(), addr.port(), control_schema_url);
 
-    match RequestBuilder::try_new(Method::GET, &url) {
+    match RequestBuilder::try_new(Method::GET, url) {
         Ok(request_builder) => {
             let response = request_builder.send()?;
             parsing::parse_schemas(&response.bytes()?[..])

@@ -25,7 +25,7 @@ impl Gateway {
     fn perform_request(&self, header: &str, body: &str, ok: &str) -> RequestResult {
         let url = format!("http://{}{}", self.addr, self.control_url);
 
-        let response = attohttpc::post(&url)
+        let response = attohttpc::post(url)
             .header("SOAPAction", header)
             .header("Content-Type", "text/xml")
             .text(body)
@@ -120,7 +120,7 @@ impl Gateway {
         const ATTEMPTS: usize = 20;
 
         for _ in 0..ATTEMPTS {
-            if let Ok(port) = self.add_random_port_mapping(protocol, local_addr, lease_duration, &description) {
+            if let Ok(port) = self.add_random_port_mapping(protocol, local_addr, lease_duration, description) {
                 return Ok(port);
             }
         }
@@ -137,7 +137,7 @@ impl Gateway {
     ) -> Result<u16, AddAnyPortError> {
         let external_port = common::random_port();
 
-        if let Err(err) = self.add_port_mapping(protocol, external_port, local_addr, lease_duration, &description) {
+        if let Err(err) = self.add_port_mapping(protocol, external_port, local_addr, lease_duration, description) {
             match parsing::convert_add_random_port_mapping_error(err) {
                 Some(err) => return Err(err),
                 None => return self.add_same_port_mapping(protocol, local_addr, lease_duration, description),
