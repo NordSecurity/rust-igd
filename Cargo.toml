@@ -32,6 +32,9 @@ optional = true
 version = "0.14"
 
 [dev-dependencies]
+http-body-util = "0.1.2"
+hyper-new = { package = "hyper", version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1.10", features = ["tokio"] }
 simplelog = "0.9"
 test-log = "0.2"
 tokio = {version = "1", features = ["full"]}

@@ -1,9 +1,10 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr;
 use std::time::Duration;
 
 use futures::prelude::*;
-use hyper::Client;
+use hyper::client::Client;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
@@ -24,6 +25,7 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
 
     let (addr, root_url) = handle_broadcast_resp(&from, &response_body)?;
 
+    // TODO: wrap in a validation function
     match (&from, &addr) {
         (SocketAddr::V4(src_ip), SocketAddr::V4(url_ip)) => {
             if src_ip.ip() != url_ip.ip() {
@@ -60,7 +62,7 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
     let control_schema =
         run_with_timeout(options.http_timeout, get_control_schemas(&addr, &control_schema_url)).await??;
 
-    let addr = match addr {
+    let addr_v4 = match addr {
         SocketAddr::V4(a) => Ok(a),
         _ => {
             warn!("unsupported IPv6 gateway response from addr: {}", addr);
@@ -68,13 +70,19 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
         }
     }?;
 
-    Ok(Gateway {
-        addr,
+    let gateway = Gateway {
+        addr: addr_v4,
         root_url,
         control_url,
         control_schema_url,
         control_schema,
-    })
+    };
+
+    let gateway_url = hyper::Uri::from_str(&format!("{gateway}"))?;
+
+    validate_url(addr.ip(), &gateway_url)?;
+
+    Ok(gateway)
 }
 
 async fn run_with_timeout<F>(timeout_value: Option<Duration>, fut: F) -> Result<F::Output, SearchError>
@@ -142,10 +150,12 @@ async fn get_control_schemas(
     addr: &SocketAddr,
     control_schema_url: &str,
 ) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    let uri = match format!("http://{}{}", addr, control_schema_url).parse() {
+    let uri: hyper::Uri = match format!("http://{}{}", addr, control_schema_url).parse() {
         Ok(uri) => uri,
         Err(err) => return Err(SearchError::from(err)),
     };
+
+    validate_url(addr.ip(), &uri)?;
 
     debug!("requesting control schema from: {}", uri);
     let client = Client::new();
@@ -158,28 +168,36 @@ async fn get_control_schemas(
     parsing::parse_schemas(c)
 }
 
+fn validate_url(src_ip: IpAddr, url: &hyper::Uri) -> Result<(), SearchError> {
+    match url.host() {
+        Some(url_host) if url_host != src_ip.to_string() => Err(SearchError::SpoofedUrl {
+            src_ip,
+            url_host: url_host.to_owned(),
+        }),
+        None => Err(SearchError::UriMissingHost(url.clone())),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http_body_util::Full;
+    use hyper_new::{body::Bytes, service::service_fn, Request, Response};
+    use hyper_util::rt::TokioIo;
+    use std::convert::Infallible;
     use std::{
         net::{Ipv4Addr, SocketAddrV4},
         time::Duration,
     };
     use test_log::test;
+    use tokio::net::TcpListener;
 
-    #[test(tokio::test)]
-    async fn ip_spoofing_in_broadcast_response() {
+    async fn start_broadcast_reply_sender(location: String) -> u16 {
         let port = {
             // Not 100% reliable way to find a free port number, but should be good enough
             let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await.unwrap();
             sock.local_addr().unwrap().port()
-        };
-
-        let options = SearchOptions {
-            bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
-            timeout: Some(Duration::from_secs(5)),
-            http_timeout: Some(Duration::from_secs(1)),
-            ..Default::default()
         };
 
         tokio::spawn(async move {
@@ -187,15 +205,158 @@ mod tests {
 
             let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
 
-            sock.send_to(b"location: http://1.2.3.4:5/test", (Ipv4Addr::LOCALHOST, port))
+            sock.send_to(format!("location: {location}").as_bytes(), (Ipv4Addr::LOCALHOST, port))
                 .await
                 .unwrap();
         });
+        port
+    }
+
+    fn default_options_with_using_free_port(port: u16) -> SearchOptions {
+        SearchOptions {
+            bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
+            timeout: Some(Duration::from_secs(5)),
+            http_timeout: Some(Duration::from_secs(1)),
+            ..Default::default()
+        }
+    }
+
+    #[test(tokio::test)]
+    async fn ip_spoofing_in_broadcast_response() {
+        let port = start_broadcast_reply_sender("http://1.2.3.4:5".to_owned()).await;
+
+        let options = default_options_with_using_free_port(port);
 
         let result = search_gateway(options).await;
         if let Err(SearchError::SpoofedIp { src_ip, url_ip }) = result {
             assert_eq!(src_ip, Ipv4Addr::LOCALHOST);
             assert_eq!(url_ip, Ipv4Addr::new(1, 2, 3, 4));
+        } else {
+            panic!("Unexpected result: {result:?}");
+        }
+    }
+
+    const RESP: &'static str = r#"<?xml version="1.0" ?>
+    <root xmlns="urn:schemas-upnp-org:device-1-0">
+        <device>
+            <deviceList>
+                <device>
+                    <deviceList>
+                        <device>
+                            <serviceList>
+                                <service>
+                                    <serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+                                    <controlURL>/igdupnp/control/WANIPConn1</controlURL>
+                                    <SCPDURL>:aaa@example.com/exec_cmd?cmd=touch%20%2ftmp%2frce</SCPDURL>
+                                </service>
+                            </serviceList>
+                        </device>
+                    </deviceList>
+                </device>
+            </deviceList>
+        </device>
+    </root>
+    "#;
+    const RESP2: &'static str = r#"<?xml version="1.0" ?>
+    <root xmlns="urn:schemas-upnp-org:device-1-0">
+        <device>
+            <deviceList>
+                <device>
+                    <deviceList>
+                        <device>
+                            <serviceList>
+                                <service>
+                                    <serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+                                    <controlURL>:aaa@example.com/exec_cmd?cmd=touch%20%2ftmp%2frce</controlURL>
+                                    <SCPDURL>/igdupnp/control/WANIPConn1</SCPDURL>
+                                </service>
+                            </serviceList>
+                        </device>
+                    </deviceList>
+                </device>
+            </deviceList>
+        </device>
+    </root>
+    "#;
+    const CONTROL_SCHEMA: &'static str = r#"<?xml version="1.0" ?>
+    <root xmlns="urn:schemas-upnp-org:device-1-0">
+    <actionList>
+        <action>
+        </action>
+    </actionList>
+    </root>
+    "#;
+
+    async fn start_http_server(responses: Vec<String>) -> u16 {
+        let addr = SocketAddr::from(([0, 0, 0, 0], 0));
+
+        // We create a TcpListener and bind it to 0.0.0.0:0
+        let listener = TcpListener::bind(addr).await.unwrap();
+
+        let ret = listener.local_addr().unwrap().port();
+
+        tokio::task::spawn(async move {
+            for resp in responses {
+                let (stream, _) = listener.accept().await.unwrap();
+
+                // Use an adapter to access something implementing `tokio::io` traits as if they implement
+                // `hyper::rt` IO traits.
+                let io = TokioIo::new(stream);
+
+                let hello_fn =
+                    move |r: Request<hyper_new::body::Incoming>| -> Result<Response<Full<Bytes>>, Infallible> {
+                        println!("Request: {r:?}");
+                        Ok(Response::new(Full::new(Bytes::from(resp.clone()))))
+                    };
+
+                // Finally, we bind the incoming connection to our `hello` service
+                if let Err(err) = hyper_new::server::conn::http1::Builder::new()
+                    // `service_fn` converts our function in a `Service`
+                    .serve_connection(io, service_fn(|r| async { hello_fn(r) }))
+                    .await
+                {
+                    eprintln!("Error serving connection: {:?}", err);
+                }
+            }
+        });
+
+        ret
+    }
+
+    #[test(tokio::test)]
+    async fn ip_spoofing_in_getxml_body() {
+        let http_port = start_http_server(vec![RESP.to_owned()]).await;
+
+        let port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
+
+        println!("http server port: {http_port}, udp port: {port}");
+
+        let options = default_options_with_using_free_port(port);
+
+        let result = search_gateway(options).await;
+        if let Err(SearchError::SpoofedUrl { src_ip, url_host }) = result {
+            assert_eq!(src_ip, Ipv4Addr::LOCALHOST);
+            assert_eq!(url_host, "example.com");
+        } else {
+            panic!("Unexpected result: {result:?}");
+        }
+    }
+
+    #[test(tokio::test)]
+    async fn ip_spoofing_in_getxml_body_control_url() {
+        let http_port = start_http_server(vec![RESP2.to_owned(), CONTROL_SCHEMA.to_owned()]).await;
+
+        let port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
+
+        println!("http server port: {http_port}, udp port: {port}");
+
+        let options = default_options_with_using_free_port(port);
+
+        let result = search_gateway(options).await;
+
+        if let Err(SearchError::SpoofedUrl { src_ip, url_host }) = result {
+            assert_eq!(src_ip, Ipv4Addr::LOCALHOST);
+            assert_eq!(url_host, "example.com");
         } else {
             panic!("Unexpected result: {result:?}");
         }

@@ -19,8 +19,6 @@ extern crate futures;
 #[cfg(feature = "aio")]
 extern crate http;
 #[cfg(feature = "aio")]
-extern crate hyper;
-#[cfg(feature = "aio")]
 extern crate tokio;
 
 // data structures

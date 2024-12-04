@@ -314,12 +314,22 @@ pub enum SearchError {
     /// Error parsing URI
     #[cfg(feature = "aio")]
     InvalidUri(hyper::http::uri::InvalidUri),
+    #[cfg(feature = "aio")]
+    /// The uri is missing the host
+    UriMissingHost(hyper::Uri),
     /// Ip spoofing detected error
     SpoofedIp {
         /// The IP from which packet was actually received
         src_ip: IpAddr,
         /// The IP which the receiving packet pretended to be from
         url_ip: IpAddr,
+    },
+    /// Uri spoofing detected error
+    SpoofedUrl {
+        /// The IP from which packet was actually received
+        src_ip: IpAddr,
+        /// The IP which the receiving packet pretended to be from
+        url_host: String,
     },
 }
 
@@ -380,6 +390,11 @@ impl fmt::Display for SearchError {
             #[cfg(feature = "aio")]
             SearchError::InvalidUri(ref e) => write!(f, "InvalidUri Error: {}", e),
             SearchError::SpoofedIp { src_ip, url_ip } => write!(f, "Spoofed IP from {src_ip} as {url_ip}"),
+            SearchError::UriMissingHost(ref uri) => write!(f, "Host part of '{uri} is missing"),
+            SearchError::SpoofedUrl {
+                ref src_ip,
+                ref url_host,
+            } => write!(f, "Spoofed IP from {src_ip} as {url_host}"),
         }
     }
 }
@@ -397,6 +412,8 @@ impl error::Error for SearchError {
             #[cfg(feature = "aio")]
             SearchError::InvalidUri(ref e) => Some(e),
             SearchError::SpoofedIp { .. } => None,
+            SearchError::UriMissingHost { .. } => None,
+            SearchError::SpoofedUrl { .. } => None,
         }
     }
 }
