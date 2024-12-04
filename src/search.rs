@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::net::{SocketAddrV4, UdpSocket};
-use std::str;
+use std::str::FromStr;
 
 use crate::common::{messages, parsing, SearchOptions};
 use crate::errors::SearchError;
@@ -31,10 +31,12 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
 
     loop {
         let mut buf = [0u8; 1500];
-        let (read, _) = socket.recv_from(&mut buf)?;
-        let text = str::from_utf8(&buf[..read])?;
+        let (read, from) = socket.recv_from(&mut buf)?;
+        let text = std::str::from_utf8(&buf[..read])?;
 
         let (addr, root_url) = parsing::parse_search_result(text)?;
+
+        check_is_ip_spoofed(&from, &addr.into())?;
 
         let (control_schema_url, control_url) = match get_control_urls(&addr, &root_url) {
             Ok(o) => o,
@@ -58,13 +60,19 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
             }
         };
 
-        return Ok(Gateway {
+        let gateway = Gateway {
             addr,
             root_url,
             control_url,
             control_schema_url,
             control_schema,
-        });
+        };
+
+        let gateway_url = reqwest::Url::from_str(&format!("{gateway}"))?;
+
+        validate_url((*addr.ip()).into(), &gateway_url)?;
+
+        return Ok(gateway);
     }
 }
 
@@ -96,6 +104,40 @@ fn get_control_schemas(
 
     let body = resp.bytes()?;
     parsing::parse_schemas(body.as_ref())
+}
+
+pub fn check_is_ip_spoofed(from: &SocketAddr, addr: &SocketAddr) -> Result<(), SearchError> {
+    match (from, addr) {
+        (SocketAddr::V4(src_ip), SocketAddr::V4(url_ip)) => {
+            if src_ip.ip() != url_ip.ip() {
+                return Err(SearchError::SpoofedIp {
+                    src_ip: (*src_ip.ip()).into(),
+                    url_ip: (*url_ip.ip()).into(),
+                });
+            }
+        }
+        (SocketAddr::V6(src_ip), SocketAddr::V6(url_ip)) => {
+            if src_ip.ip() != url_ip.ip() {
+                return Err(SearchError::SpoofedIp {
+                    src_ip: (*src_ip.ip()).into(),
+                    url_ip: (*url_ip.ip()).into(),
+                });
+            }
+        }
+        (SocketAddr::V6(src_ip), SocketAddr::V4(url_ip)) => {
+            return Err(SearchError::SpoofedIp {
+                src_ip: (*src_ip.ip()).into(),
+                url_ip: (*url_ip.ip()).into(),
+            })
+        }
+        (SocketAddr::V4(src_ip), SocketAddr::V6(url_ip)) => {
+            return Err(SearchError::SpoofedIp {
+                src_ip: (*src_ip.ip()).into(),
+                url_ip: (*url_ip.ip()).into(),
+            })
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_url(src_ip: IpAddr, url: &reqwest::Url) -> Result<(), SearchError> {

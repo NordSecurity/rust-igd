@@ -9,7 +9,7 @@ use tokio::time::timeout;
 use crate::aio::Gateway;
 use crate::common::{messages, parsing, SearchOptions};
 use crate::errors::SearchError;
-use crate::search::validate_url;
+use crate::search::{check_is_ip_spoofed, validate_url};
 
 const MAX_RESPONSE_SIZE: usize = 1500;
 
@@ -24,37 +24,7 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
 
     let (addr, root_url) = handle_broadcast_resp(&from, &response_body)?;
 
-    // TODO: wrap in a validation function
-    match (&from, &addr) {
-        (SocketAddr::V4(src_ip), SocketAddr::V4(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V6(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V4(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-        (SocketAddr::V4(src_ip), SocketAddr::V6(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-    }
+    check_is_ip_spoofed(&from, &addr)?;
 
     let (control_schema_url, control_url) =
         run_with_timeout(options.http_timeout, get_control_urls(&addr, &root_url)).await??;
