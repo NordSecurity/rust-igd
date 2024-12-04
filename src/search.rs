@@ -1,6 +1,5 @@
-use attohttpc::Method;
-use attohttpc::RequestBuilder;
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::net::{SocketAddrV4, UdpSocket};
 use std::str;
 
@@ -48,7 +47,7 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
             }
         };
 
-        let control_schema = match get_schemas(&addr, &control_schema_url) {
+        let control_schema = match get_control_schemas(&addr, &control_schema_url) {
             Ok(o) => o,
             Err(e) => {
                 debug!(
@@ -69,26 +68,43 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
     }
 }
 
-fn get_control_urls(addr: &SocketAddrV4, root_url: &str) -> Result<(String, String), SearchError> {
-    let url = format!("http://{}:{}{}", addr.ip(), addr.port(), root_url);
+fn get_control_urls(addr: &SocketAddrV4, path: &str) -> Result<(String, String), SearchError> {
+    let url: reqwest::Url = format!("http://{}{}", addr, path).parse()?;
 
-    match RequestBuilder::try_new(Method::GET, url) {
-        Ok(request_builder) => {
-            let response = request_builder.send()?;
-            parsing::parse_control_urls(&response.bytes()?[..])
-        }
-        Err(error) => Err(SearchError::HttpError(error)),
-    }
+    debug!("requesting control url from: {:?}", url);
+    let client = reqwest::blocking::Client::new();
+    let resp = client.get(url).send()?;
+
+    debug!("handling control response from: {}", addr);
+    let body = resp.bytes()?;
+    parsing::parse_control_urls(body.as_ref())
 }
 
-fn get_schemas(addr: &SocketAddrV4, control_schema_url: &str) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    let url = format!("http://{}:{}{}", addr.ip(), addr.port(), control_schema_url);
+fn get_control_schemas(
+    addr: &SocketAddrV4,
+    control_schema_url: &str,
+) -> Result<HashMap<String, Vec<String>>, SearchError> {
+    let url: reqwest::Url = format!("http://{}{}", addr, control_schema_url).parse()?;
 
-    match RequestBuilder::try_new(Method::GET, url) {
-        Ok(request_builder) => {
-            let response = request_builder.send()?;
-            parsing::parse_schemas(&response.bytes()?[..])
-        }
-        Err(error) => Err(SearchError::HttpError(error)),
+    validate_url((*addr.ip()).into(), &url)?;
+
+    debug!("requesting control schema from: {}", url);
+    let client = reqwest::blocking::Client::new();
+    let resp = client.get(url).send()?;
+
+    debug!("handling schema response from: {}", addr);
+
+    let body = resp.bytes()?;
+    parsing::parse_schemas(body.as_ref())
+}
+
+pub fn validate_url(src_ip: IpAddr, url: &reqwest::Url) -> Result<(), SearchError> {
+    match url.host_str() {
+        Some(url_host) if url_host != src_ip.to_string() => Err(SearchError::SpoofedUrl {
+            src_ip,
+            url_host: url_host.to_owned(),
+        }),
+        None => Err(SearchError::UrlMissingHost(url.clone())),
+        _ => Ok(()),
     }
 }

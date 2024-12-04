@@ -4,22 +4,12 @@
 //! Use one of the `search_gateway` functions to obtain a `Gateway` object.
 //! You can then communicate with the device via this object.
 
-extern crate attohttpc;
 #[macro_use]
 extern crate log;
-#[cfg(feature = "aio")]
-extern crate bytes;
 
 extern crate rand;
 extern crate url;
 extern crate xmltree;
-
-#[cfg(feature = "aio")]
-extern crate futures;
-#[cfg(feature = "aio")]
-extern crate http;
-#[cfg(feature = "aio")]
-extern crate tokio;
 
 // data structures
 pub use self::common::parsing::PortMappingEntry;
@@ -36,6 +26,7 @@ pub use self::search::search_gateway;
 
 #[cfg(feature = "aio")]
 pub mod aio;
+
 mod common;
 mod errors;
 mod gateway;

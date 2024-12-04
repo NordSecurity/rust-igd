@@ -1,3 +1,4 @@
+use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use std::collections::HashMap;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -25,10 +26,14 @@ impl Gateway {
     fn perform_request(&self, header: &str, body: &str, ok: &str) -> RequestResult {
         let url = format!("http://{}{}", self.addr, self.control_url);
 
-        let response = attohttpc::post(url)
+        let client = reqwest::blocking::Client::new();
+
+        let response = client
+            .post(url)
             .header("SOAPAction", header)
-            .header("Content-Type", "text/xml")
-            .text(body)
+            .header(CONTENT_TYPE, "text/xml")
+            .header(CONTENT_LENGTH, body.len() as u64)
+            .body(body.to_owned())
             .send()?;
 
         parsing::parse_response(response.text()?, ok)

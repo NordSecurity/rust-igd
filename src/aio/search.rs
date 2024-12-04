@@ -1,16 +1,15 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::future::Future;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
-
-use futures::prelude::*;
-use hyper::client::Client;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
 use crate::aio::Gateway;
 use crate::common::{messages, parsing, SearchOptions};
 use crate::errors::SearchError;
+use crate::search::validate_url;
 
 const MAX_RESPONSE_SIZE: usize = 1500;
 
@@ -78,7 +77,7 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
         control_schema,
     };
 
-    let gateway_url = hyper::Uri::from_str(&format!("{gateway}"))?;
+    let gateway_url = reqwest::Url::from_str(&format!("{gateway}"))?;
 
     validate_url(addr.ip(), &gateway_url)?;
 
@@ -102,16 +101,15 @@ async fn send_search_request(socket: &mut UdpSocket, addr: SocketAddr) -> Result
         addr,
         socket.local_addr()
     );
-    socket
+    Ok(socket
         .send_to(messages::SEARCH_REQUEST.as_bytes(), &addr)
-        .map_ok(|_| ())
-        .map_err(SearchError::from)
         .await
+        .map(|_| ())?)
 }
 
 async fn receive_search_response(socket: &mut UdpSocket) -> Result<(Vec<u8>, SocketAddr), SearchError> {
     let mut buff = [0u8; MAX_RESPONSE_SIZE];
-    let (n, from) = socket.recv_from(&mut buff).map_err(SearchError::from).await?;
+    let (n, from) = socket.recv_from(&mut buff).await?;
     debug!("received broadcast response from: {}", from);
     Ok((buff[..n].to_vec(), from))
 }
@@ -130,60 +128,40 @@ fn handle_broadcast_resp(from: &SocketAddr, data: &[u8]) -> Result<(SocketAddr, 
 }
 
 async fn get_control_urls(addr: &SocketAddr, path: &str) -> Result<(String, String), SearchError> {
-    let uri = match format!("http://{}{}", addr, path).parse() {
-        Ok(uri) => uri,
-        Err(err) => return Err(SearchError::from(err)),
-    };
+    let url: reqwest::Url = format!("http://{}{}", addr, path).parse()?;
 
-    debug!("requesting control url from: {}", uri);
-    let client = Client::new();
-    let resp = hyper::body::to_bytes(client.get(uri).await?.into_body())
-        .map_err(SearchError::from)
-        .await?;
+    debug!("requesting control url from: {:?}", url);
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await?;
 
     debug!("handling control response from: {}", addr);
-    let c = std::io::Cursor::new(&resp);
-    parsing::parse_control_urls(c)
+    let body = resp.bytes().await?;
+    parsing::parse_control_urls(body.as_ref())
 }
 
 async fn get_control_schemas(
     addr: &SocketAddr,
     control_schema_url: &str,
 ) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    let uri: hyper::Uri = match format!("http://{}{}", addr, control_schema_url).parse() {
-        Ok(uri) => uri,
-        Err(err) => return Err(SearchError::from(err)),
-    };
+    let url: reqwest::Url = format!("http://{}{}", addr, control_schema_url).parse()?;
 
-    validate_url(addr.ip(), &uri)?;
+    validate_url(addr.ip(), &url)?;
 
-    debug!("requesting control schema from: {}", uri);
-    let client = Client::new();
-    let resp = hyper::body::to_bytes(client.get(uri).await?.into_body())
-        .map_err(SearchError::from)
-        .await?;
+    debug!("requesting control schema from: {}", url);
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await?;
 
     debug!("handling schema response from: {}", addr);
-    let c = std::io::Cursor::new(&resp);
-    parsing::parse_schemas(c)
-}
 
-fn validate_url(src_ip: IpAddr, url: &hyper::Uri) -> Result<(), SearchError> {
-    match url.host() {
-        Some(url_host) if url_host != src_ip.to_string() => Err(SearchError::SpoofedUrl {
-            src_ip,
-            url_host: url_host.to_owned(),
-        }),
-        None => Err(SearchError::UriMissingHost(url.clone())),
-        _ => Ok(()),
-    }
+    let body = resp.bytes().await?;
+    parsing::parse_schemas(body.as_ref())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use http_body_util::Full;
-    use hyper_new::{body::Bytes, service::service_fn, Request, Response};
+    use hyper::{body::Bytes, service::service_fn, Request, Response};
     use hyper_util::rt::TokioIo;
     use std::convert::Infallible;
     use std::{
@@ -303,14 +281,13 @@ mod tests {
                 // `hyper::rt` IO traits.
                 let io = TokioIo::new(stream);
 
-                let hello_fn =
-                    move |r: Request<hyper_new::body::Incoming>| -> Result<Response<Full<Bytes>>, Infallible> {
-                        println!("Request: {r:?}");
-                        Ok(Response::new(Full::new(Bytes::from(resp.clone()))))
-                    };
+                let hello_fn = move |r: Request<hyper::body::Incoming>| -> Result<Response<Full<Bytes>>, Infallible> {
+                    println!("Request: {r:?}");
+                    Ok(Response::new(Full::new(Bytes::from(resp.clone()))))
+                };
 
                 // Finally, we bind the incoming connection to our `hello` service
-                if let Err(err) = hyper_new::server::conn::http1::Builder::new()
+                if let Err(err) = hyper::server::conn::http1::Builder::new()
                     // `service_fn` converts our function in a `Service`
                     .serve_connection(io, service_fn(|r| async { hello_fn(r) }))
                     .await
