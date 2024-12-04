@@ -29,55 +29,49 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
 
     socket.send_to(messages::SEARCH_REQUEST.as_bytes(), options.broadcast_address)?;
 
-    loop {
-        let mut buf = [0u8; 1500];
-        let (read, from) = socket.recv_from(&mut buf)?;
-        let text = std::str::from_utf8(&buf[..read])?;
+    let mut buf = [0u8; 1500];
+    let (read, from) = socket.recv_from(&mut buf)?;
+    let text = std::str::from_utf8(&buf[..read])?;
 
-        let (addr, root_url) = parsing::parse_search_result(text)?;
+    let (addr, root_url) = parsing::parse_search_result(text)?;
 
-        check_is_ip_spoofed(&from, &addr.into())?;
+    check_is_ip_spoofed(&from, &addr.into())?;
 
-        let (control_schema_url, control_url) = match get_control_urls(&addr, &root_url) {
-            Ok(o) => o,
-            Err(e) => {
-                debug!(
-                    "Error has occurred while getting control urls. error: {}, addr: {}, root_url: {}",
-                    e, addr, root_url
-                );
-                continue;
-            }
-        };
+    let (control_schema_url, control_url) = get_control_urls(&addr, &root_url).map_err(|e| {
+        debug!(
+            "Error has occurred while getting control urls. error: {}, addr: {}, root_url: {}",
+            e, addr, root_url
+        );
+        e
+    })?;
 
-        let control_schema = match get_control_schemas(&addr, &control_schema_url) {
-            Ok(o) => o,
-            Err(e) => {
-                debug!(
-                    "Error has occurred while getting schemas. error: {}, addr: {}, control_schema_url: {}",
-                    e, addr, control_schema_url
-                );
-                continue;
-            }
-        };
+    let control_schema = get_control_schemas(&addr, &control_schema_url).map_err(|e| {
+        debug!(
+            "Error has occurred while getting schemas. error: {}, addr: {}, control_schema_url: {}",
+            e, addr, control_schema_url
+        );
+        e
+    })?;
 
-        let gateway = Gateway {
-            addr,
-            root_url,
-            control_url,
-            control_schema_url,
-            control_schema,
-        };
+    let gateway = Gateway {
+        addr,
+        root_url,
+        control_url,
+        control_schema_url,
+        control_schema,
+    };
 
-        let gateway_url = reqwest::Url::from_str(&format!("{gateway}"))?;
+    let gateway_url = reqwest::Url::from_str(&format!("{gateway}"))?;
 
-        validate_url((*addr.ip()).into(), &gateway_url)?;
+    validate_url((*addr.ip()).into(), &gateway_url)?;
 
-        return Ok(gateway);
-    }
+    return Ok(gateway);
 }
 
 fn get_control_urls(addr: &SocketAddrV4, path: &str) -> Result<(String, String), SearchError> {
     let url: reqwest::Url = format!("http://{}{}", addr, path).parse()?;
+
+    validate_url((*addr.ip()).into(), &url)?;
 
     debug!("requesting control url from: {:?}", url);
     let client = reqwest::blocking::Client::new();
