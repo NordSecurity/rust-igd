@@ -10,104 +10,33 @@ use std::string::FromUtf8Error;
 use tokio::time::error::Elapsed;
 
 /// Errors that can occur when sending the request to the gateway.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RequestError {
-    /// attohttp error
-    AttoHttpError(attohttpc::Error),
-    /// IO Error
-    IoError(io::Error),
-    /// The response from the gateway could not be parsed.
+    #[error("IO Error: {0}")]
+    /// I/O error
+    IoError(#[from] io::Error),
+    #[error("The response from the gateway could not be parsed: '{0}'")]
+    /// Invalid response
     InvalidResponse(String),
-    /// The gateway returned an unhandled error code and description.
+    #[error("The gateway returned an unhandled error code {0} and description: {1}")]
+    /// Unhandled error code
     ErrorCode(u16, String),
-    /// Action is not supported by the gateway
+    #[error("Action is not supported by the gateway: {0}")]
+    /// Unsupported action
     UnsupportedAction(String),
-    /// When using the aio feature.
+    #[error("Reqwest error: {0}")]
+    /// Reqwest error
+    ReqwestError(#[from] reqwest::Error),
     #[cfg(feature = "aio")]
-    HyperError(hyper::Error),
-
-    #[cfg(feature = "aio")]
-    /// http crate error type
-    HttpError(http::Error),
-
-    #[cfg(feature = "aio")]
-    /// Error parsing HTTP body
-    Utf8Error(FromUtf8Error),
-}
-
-impl From<attohttpc::Error> for RequestError {
-    fn from(err: attohttpc::Error) -> RequestError {
-        RequestError::AttoHttpError(err)
-    }
-}
-
-impl From<io::Error> for RequestError {
-    fn from(err: io::Error) -> RequestError {
-        RequestError::IoError(err)
-    }
-}
-
-#[cfg(feature = "aio")]
-impl From<http::Error> for RequestError {
-    fn from(err: http::Error) -> RequestError {
-        RequestError::HttpError(err)
-    }
-}
-
-#[cfg(feature = "aio")]
-impl From<hyper::Error> for RequestError {
-    fn from(err: hyper::Error) -> RequestError {
-        RequestError::HyperError(err)
-    }
-}
-
-#[cfg(feature = "aio")]
-impl From<FromUtf8Error> for RequestError {
-    fn from(err: FromUtf8Error) -> RequestError {
-        RequestError::Utf8Error(err)
-    }
+    #[error("Error parsing HTTP body as utf-8: {0}")]
+    /// Utf-8 parsning error
+    Utf8Error(#[from] FromUtf8Error),
 }
 
 #[cfg(feature = "aio")]
 impl From<Elapsed> for RequestError {
     fn from(_err: Elapsed) -> RequestError {
         RequestError::IoError(io::Error::new(io::ErrorKind::TimedOut, "timer failed"))
-    }
-}
-
-impl fmt::Display for RequestError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            RequestError::AttoHttpError(ref e) => write!(f, "HTTP error {}", e),
-            RequestError::InvalidResponse(ref e) => write!(f, "Invalid response from gateway: {}", e),
-            RequestError::IoError(ref e) => write!(f, "IO error. {}", e),
-            RequestError::ErrorCode(n, ref e) => write!(f, "Gateway response error {}: {}", n, e),
-            RequestError::UnsupportedAction(ref e) => write!(f, "Gateway does not support action: {}", e),
-            #[cfg(feature = "aio")]
-            RequestError::HyperError(ref e) => write!(f, "Hyper Error: {}", e),
-            #[cfg(feature = "aio")]
-            RequestError::HttpError(ref e) => write!(f, "Http  Error: {}", e),
-            #[cfg(feature = "aio")]
-            RequestError::Utf8Error(ref e) => write!(f, "Utf8Error Error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for RequestError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            RequestError::AttoHttpError(ref e) => Some(e),
-            RequestError::InvalidResponse(..) => None,
-            RequestError::IoError(ref e) => Some(e),
-            RequestError::ErrorCode(..) => None,
-            RequestError::UnsupportedAction(..) => None,
-            #[cfg(feature = "aio")]
-            RequestError::HyperError(ref e) => Some(e),
-            #[cfg(feature = "aio")]
-            RequestError::HttpError(ref e) => Some(e),
-            #[cfg(feature = "aio")]
-            RequestError::Utf8Error(ref e) => Some(e),
-        }
     }
 }
 
@@ -296,108 +225,52 @@ impl std::error::Error for AddPortError {
 }
 
 /// Errors than can occur while trying to find the gateway.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SearchError {
-    /// Http/Hyper error
-    HttpError(attohttpc::Error),
-    /// Unable to process the response
+    #[error("Unable to process the response")]
+    /// Invalid response
     InvalidResponse,
-    /// IO Error
-    IoError(io::Error),
-    /// UTF-8 decoding error
-    Utf8Error(str::Utf8Error),
-    /// XML processing error
-    XmlError(xmltree::ParseError),
-    /// When using the aio feature.
-    #[cfg(feature = "aio")]
-    HyperError(hyper::Error),
-    /// Error parsing URI
-    #[cfg(feature = "aio")]
-    InvalidUri(hyper::http::uri::InvalidUri),
-    /// Ip spoofing detected error
+    #[error("IO Error: {0}")]
+    /// I/O error
+    IoError(#[from] io::Error),
+    #[error("UTF-8 decoding error: {0}")]
+    /// Utf-8 parsing error
+    Utf8Error(#[from] str::Utf8Error),
+    #[error("XML processing error: {0}")]
+    /// Xml parsing error
+    XmlError(#[from] xmltree::ParseError),
+    #[error("Reqwest error: {0}")]
+    /// Reqwest error
+    ReqwestError(#[from] reqwest::Error),
+    #[error("Error parsing URI: {0}")]
+    /// Invalid uri
+    InvalidUri(#[from] url::ParseError),
+    #[error("The uri is missing the host: {0}")]
+    /// Uri is missing host
+    UrlMissingHost(reqwest::Url),
+    #[error("Ip {src_ip} spoofed as {url_ip}")]
+    /// IP spoofing error
     SpoofedIp {
         /// The IP from which packet was actually received
         src_ip: IpAddr,
         /// The IP which the receiving packet pretended to be from
         url_ip: IpAddr,
     },
+    /// Uri spoofing detected error
+    #[error("Ip {src_ip} spoofed in url as {url_host}")]
+    /// Url host spoofing error
+    SpoofedUrl {
+        /// The IP from which packet was actually received
+        src_ip: IpAddr,
+        /// The IP which the receiving packet pretended to be from
+        url_host: String,
+    },
 }
 
-impl From<attohttpc::Error> for SearchError {
-    fn from(err: attohttpc::Error) -> SearchError {
-        SearchError::HttpError(err)
-    }
-}
-
-impl From<io::Error> for SearchError {
-    fn from(err: io::Error) -> SearchError {
-        SearchError::IoError(err)
-    }
-}
-
-impl From<str::Utf8Error> for SearchError {
-    fn from(err: str::Utf8Error) -> SearchError {
-        SearchError::Utf8Error(err)
-    }
-}
-
-impl From<xmltree::ParseError> for SearchError {
-    fn from(err: xmltree::ParseError) -> SearchError {
-        SearchError::XmlError(err)
-    }
-}
-
-#[cfg(feature = "aio")]
-impl From<hyper::Error> for SearchError {
-    fn from(err: hyper::Error) -> SearchError {
-        SearchError::HyperError(err)
-    }
-}
-
-#[cfg(feature = "aio")]
-impl From<hyper::http::uri::InvalidUri> for SearchError {
-    fn from(err: hyper::http::uri::InvalidUri) -> SearchError {
-        SearchError::InvalidUri(err)
-    }
-}
 #[cfg(feature = "aio")]
 impl From<Elapsed> for SearchError {
     fn from(_err: Elapsed) -> SearchError {
         SearchError::IoError(io::Error::new(io::ErrorKind::TimedOut, "search timed out"))
-    }
-}
-
-impl fmt::Display for SearchError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SearchError::HttpError(ref e) => write!(f, "HTTP error {}", e),
-            SearchError::InvalidResponse => write!(f, "Invalid response"),
-            SearchError::IoError(ref e) => write!(f, "IO error: {}", e),
-            SearchError::Utf8Error(ref e) => write!(f, "UTF-8 error: {}", e),
-            SearchError::XmlError(ref e) => write!(f, "XML error: {}", e),
-            #[cfg(feature = "aio")]
-            SearchError::HyperError(ref e) => write!(f, "Hyper Error: {}", e),
-            #[cfg(feature = "aio")]
-            SearchError::InvalidUri(ref e) => write!(f, "InvalidUri Error: {}", e),
-            SearchError::SpoofedIp { src_ip, url_ip } => write!(f, "Spoofed IP from {src_ip} as {url_ip}"),
-        }
-    }
-}
-
-impl error::Error for SearchError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            SearchError::HttpError(ref e) => Some(e),
-            SearchError::InvalidResponse => None,
-            SearchError::IoError(ref e) => Some(e),
-            SearchError::Utf8Error(ref e) => Some(e),
-            SearchError::XmlError(ref e) => Some(e),
-            #[cfg(feature = "aio")]
-            SearchError::HyperError(ref e) => Some(e),
-            #[cfg(feature = "aio")]
-            SearchError::InvalidUri(ref e) => Some(e),
-            SearchError::SpoofedIp { .. } => None,
-        }
     }
 }
 

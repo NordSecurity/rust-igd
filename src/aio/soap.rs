@@ -1,9 +1,5 @@
-use hyper::{
-    header::{CONTENT_LENGTH, CONTENT_TYPE},
-    Body, Client, Request,
-};
-
 use crate::errors::RequestError;
+use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 
 #[derive(Clone, Debug)]
 pub struct Action(String);
@@ -17,18 +13,16 @@ impl Action {
 const HEADER_NAME: &str = "SOAPAction";
 
 pub async fn send_async(url: &str, action: Action, body: &str) -> Result<String, RequestError> {
-    let client = Client::new();
+    let client = reqwest::Client::new();
 
-    let req = Request::builder()
-        .uri(url)
-        .method("POST")
+    let resp = client
+        .post(url)
         .header(HEADER_NAME, action.0)
         .header(CONTENT_TYPE, "text/xml")
         .header(CONTENT_LENGTH, body.len() as u64)
-        .body(Body::from(body.to_string()))?;
+        .body(body.to_owned())
+        .send()
+        .await?;
 
-    let resp = client.request(req).await?;
-    let body = hyper::body::to_bytes(resp.into_body()).await?;
-    let string = String::from_utf8(body.to_vec())?;
-    Ok(string)
+    Ok(resp.text().await?)
 }
