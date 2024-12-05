@@ -87,6 +87,28 @@ const RESP_SPOOFED_CONTROL_URL: &'static str = r#"<?xml version="1.0" ?>
     </root>
     "#;
 
+const RESP: &'static str = r#"<?xml version="1.0" ?>
+    <root xmlns="urn:schemas-upnp-org:device-1-0">
+        <device>
+            <deviceList>
+                <device>
+                    <deviceList>
+                        <device>
+                            <serviceList>
+                                <service>
+                                    <serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+                                    <controlURL>/igdupnp/control/WANIPConn1</controlURL>
+                                    <SCPDURL>/igdupnp/control/WANIPConn1</SCPDURL>
+                                </service>
+                            </serviceList>
+                        </device>
+                    </deviceList>
+                </device>
+            </deviceList>
+        </device>
+    </root>
+    "#;
+
 const RESP_CONTROL_SCHEMA: &'static str = r#"<?xml version="1.0" ?>
     <root xmlns="urn:schemas-upnp-org:device-1-0">
     <actionList>
@@ -209,6 +231,31 @@ async fn ip_spoofing_in_getxml_body_control_url() {
         } else {
             panic!("Unexpected result: {result:?}");
         }
+    }
+    aux(|opt| async {
+        tokio::task::spawn_blocking(|| search_gateway(opt).map(|_| ()))
+            .await
+            .unwrap()
+    })
+    .await;
+    #[cfg(feature = "aio")]
+    aux(|opt| async { crate::aio::search_gateway(opt).await.map(|_| ()) }).await;
+}
+
+#[test(tokio::test)]
+async fn non_spoofed_urls_result_in_search_gateway_success() {
+    async fn aux<F, Fut>(search_gateway: F)
+    where
+        Fut: Future<Output = Result<(), SearchError>>,
+        F: Fn(SearchOptions) -> Fut,
+    {
+        let http_port = start_http_server(vec![RESP.to_owned(), RESP_CONTROL_SCHEMA.to_owned()]).await;
+
+        let local_free_port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
+
+        let options = default_options_with_using_free_port(local_free_port);
+
+        assert!(search_gateway(options).await.is_ok());
     }
     aux(|opt| async {
         tokio::task::spawn_blocking(|| search_gateway(opt).map(|_| ()))
