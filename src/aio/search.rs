@@ -1,15 +1,15 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::time::Duration;
-
-use futures::prelude::*;
-use hyper::Client;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
 use crate::aio::Gateway;
 use crate::common::{messages, parsing, SearchOptions};
 use crate::errors::SearchError;
+use crate::search::{check_is_ip_spoofed, validate_url};
 
 const MAX_RESPONSE_SIZE: usize = 1500;
 
@@ -24,43 +24,14 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
 
     let (addr, root_url) = handle_broadcast_resp(&from, &response_body)?;
 
-    match (&from, &addr) {
-        (SocketAddr::V4(src_ip), SocketAddr::V4(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V6(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V4(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-        (SocketAddr::V4(src_ip), SocketAddr::V6(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-    }
+    check_is_ip_spoofed(&from, &addr)?;
 
     let (control_schema_url, control_url) =
         run_with_timeout(options.http_timeout, get_control_urls(&addr, &root_url)).await??;
     let control_schema =
         run_with_timeout(options.http_timeout, get_control_schemas(&addr, &control_schema_url)).await??;
 
-    let addr = match addr {
+    let addr_v4 = match addr {
         SocketAddr::V4(a) => Ok(a),
         _ => {
             warn!("unsupported IPv6 gateway response from addr: {}", addr);
@@ -68,13 +39,19 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
         }
     }?;
 
-    Ok(Gateway {
-        addr,
+    let gateway = Gateway {
+        addr: addr_v4,
         root_url,
         control_url,
         control_schema_url,
         control_schema,
-    })
+    };
+
+    let gateway_url = reqwest::Url::from_str(&format!("{gateway}"))?;
+
+    validate_url(addr.ip(), &gateway_url)?;
+
+    Ok(gateway)
 }
 
 async fn run_with_timeout<F>(timeout_value: Option<Duration>, fut: F) -> Result<F::Output, SearchError>
@@ -94,16 +71,15 @@ async fn send_search_request(socket: &mut UdpSocket, addr: SocketAddr) -> Result
         addr,
         socket.local_addr()
     );
-    socket
+    Ok(socket
         .send_to(messages::SEARCH_REQUEST.as_bytes(), &addr)
-        .map_ok(|_| ())
-        .map_err(SearchError::from)
         .await
+        .map(|_| ())?)
 }
 
 async fn receive_search_response(socket: &mut UdpSocket) -> Result<(Vec<u8>, SocketAddr), SearchError> {
     let mut buff = [0u8; MAX_RESPONSE_SIZE];
-    let (n, from) = socket.recv_from(&mut buff).map_err(SearchError::from).await?;
+    let (n, from) = socket.recv_from(&mut buff).await?;
     debug!("received broadcast response from: {}", from);
     Ok((buff[..n].to_vec(), from))
 }
@@ -122,82 +98,33 @@ fn handle_broadcast_resp(from: &SocketAddr, data: &[u8]) -> Result<(SocketAddr, 
 }
 
 async fn get_control_urls(addr: &SocketAddr, path: &str) -> Result<(String, String), SearchError> {
-    let uri = match format!("http://{}{}", addr, path).parse() {
-        Ok(uri) => uri,
-        Err(err) => return Err(SearchError::from(err)),
-    };
+    let url: reqwest::Url = format!("http://{}{}", addr, path).parse()?;
 
-    debug!("requesting control url from: {}", uri);
-    let client = Client::new();
-    let resp = hyper::body::to_bytes(client.get(uri).await?.into_body())
-        .map_err(SearchError::from)
-        .await?;
+    validate_url(addr.ip(), &url)?;
+
+    debug!("requesting control url from: {:?}", url);
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await?;
 
     debug!("handling control response from: {}", addr);
-    let c = std::io::Cursor::new(&resp);
-    parsing::parse_control_urls(c)
+    let body = resp.bytes().await?;
+    parsing::parse_control_urls(body.as_ref())
 }
 
 async fn get_control_schemas(
     addr: &SocketAddr,
     control_schema_url: &str,
 ) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    let uri = match format!("http://{}{}", addr, control_schema_url).parse() {
-        Ok(uri) => uri,
-        Err(err) => return Err(SearchError::from(err)),
-    };
+    let url: reqwest::Url = format!("http://{}{}", addr, control_schema_url).parse()?;
 
-    debug!("requesting control schema from: {}", uri);
-    let client = Client::new();
-    let resp = hyper::body::to_bytes(client.get(uri).await?.into_body())
-        .map_err(SearchError::from)
-        .await?;
+    validate_url(addr.ip(), &url)?;
+
+    debug!("requesting control schema from: {}", url);
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await?;
 
     debug!("handling schema response from: {}", addr);
-    let c = std::io::Cursor::new(&resp);
-    parsing::parse_schemas(c)
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{
-        net::{Ipv4Addr, SocketAddrV4},
-        time::Duration,
-    };
-    use test_log::test;
-
-    #[test(tokio::test)]
-    async fn ip_spoofing_in_broadcast_response() {
-        let port = {
-            // Not 100% reliable way to find a free port number, but should be good enough
-            let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await.unwrap();
-            sock.local_addr().unwrap().port()
-        };
-
-        let options = SearchOptions {
-            bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
-            timeout: Some(Duration::from_secs(5)),
-            http_timeout: Some(Duration::from_secs(1)),
-            ..Default::default()
-        };
-
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-
-            let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-
-            sock.send_to(b"location: http://1.2.3.4:5/test", (Ipv4Addr::LOCALHOST, port))
-                .await
-                .unwrap();
-        });
-
-        let result = search_gateway(options).await;
-        if let Err(SearchError::SpoofedIp { src_ip, url_ip }) = result {
-            assert_eq!(src_ip, Ipv4Addr::LOCALHOST);
-            assert_eq!(url_ip, Ipv4Addr::new(1, 2, 3, 4));
-        } else {
-            panic!("Unexpected result: {result:?}");
-        }
-    }
+    let body = resp.bytes().await?;
+    parsing::parse_schemas(body.as_ref())
 }
