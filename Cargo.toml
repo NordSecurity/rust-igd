@@ -15,22 +15,30 @@ version = "0.12.1"
 all-features = true
 
 [dependencies]
+bytes = "1.11.1"
+http = "1.4.0"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "client"] }
+hyper-util = { version = "0.1", features = ["http1", "client"] }
 log = "0.4"
 rand = "0.8"
 reqwest = { version = "0.12.9", default-features = false, features = ["blocking", "rustls-tls"] }
 thiserror = "2.0.4"
-tokio = {version = "1", optional = true, features = ["net"]}
+tokio = {version = "1", optional = true, features = ["net", "macros"]}
 url = "2"
 xmltree = "0.11"
 
 [dev-dependencies]
+assert_matches = "1.5.0"
 http-body-util = "0.1"
+httptest = "0.16.4"
 hyper = { package = "hyper", version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 paste = "1.0.15"
 simplelog = "0.9"
 test-log = "0.2"
 tokio = {version = "1", features = ["full"]}
+tokio-stream = "0.1.18"
 
 [features]
 aio = ["tokio"]

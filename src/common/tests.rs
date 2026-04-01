@@ -6,19 +6,21 @@ use paste::paste;
 use std::{
     convert::Infallible,
     future::Future,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration,
 };
 use test_log::test;
 use tokio::net::{TcpListener, UdpSocket};
 
-async fn start_broadcast_reply_sender(location: String) -> u16 {
-    let local_free_port = {
-        // Not 100% reliable way to find a free port number, but should be good enough
-        let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await.unwrap();
-        let ret = sock.local_addr().unwrap().port();
-        ret
-    };
+async fn find_free_port(ip: IpAddr) -> u16 {
+    // Not 100% reliable way to find a free port number, but should be good enough
+    let sock = UdpSocket::bind((ip, 0)).await.unwrap();
+    let ret = sock.local_addr().unwrap().port();
+    ret
+}
+
+pub async fn start_broadcast_reply_sender(location: String) -> u16 {
+    let local_free_port = find_free_port(Ipv4Addr::LOCALHOST.into()).await;
 
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -35,11 +37,14 @@ async fn start_broadcast_reply_sender(location: String) -> u16 {
     local_free_port
 }
 
-fn default_options_with_using_free_port(port: u16) -> SearchOptions {
+pub async fn default_options_with_using_free_port(port: u16) -> SearchOptions {
+    let broadcast_ip: IpAddr = [239u8, 255, 255, 250].into();
+    let free_broadcast_port = find_free_port(broadcast_ip).await;
     SearchOptions {
         bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
         timeout: Some(Duration::from_secs(5)),
         http_timeout: Some(Duration::from_secs(1)),
+        broadcast_address: (broadcast_ip, free_broadcast_port).into(),
         ..Default::default()
     }
 }
@@ -120,7 +125,10 @@ const RESP_CONTROL_SCHEMA: &'static str = r#"<?xml version="1.0" ?>
     "#;
 
 async fn start_http_server(responses: Vec<String>) -> u16 {
-    let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await.unwrap();
+    let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+        .await
+        .unwrap();
+    println!("starting new http listener on: {:?}", listener.local_addr());
     let local_port = listener.local_addr().unwrap().port();
 
     tokio::task::spawn(async move {
@@ -187,7 +195,7 @@ macro_rules! run_tests {
 run_tests! {
     fn ip_spoofing_in_broadcast_response(search_gateway) {
         let local_free_port = start_broadcast_reply_sender("http://1.2.3.4:5".to_owned()).await;
-        let options = default_options_with_using_free_port(local_free_port);
+        let options = default_options_with_using_free_port(local_free_port).await;
 
         let result = search_gateway(options).await;
         if let Err(SearchError::SpoofedIp { src_ip, url_ip }) = result {
@@ -202,7 +210,7 @@ run_tests! {
         let http_port = start_http_server(vec![RESP_SPOOFED_SCPDURL.to_owned()]).await;
         let local_free_port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
 
-        let options = default_options_with_using_free_port(local_free_port);
+        let options = default_options_with_using_free_port(local_free_port).await;
 
         let result = search_gateway(options).await;
         if let Err(SearchError::SpoofedUrl { src_ip, url_host }) = result {
@@ -221,7 +229,7 @@ run_tests! {
         .await;
 
         let local_free_port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
-        let options = default_options_with_using_free_port(local_free_port);
+        let options = default_options_with_using_free_port(local_free_port).await;
         let result = search_gateway(options).await;
 
         if let Err(SearchError::SpoofedUrl { src_ip, url_host }) = result {
@@ -235,7 +243,7 @@ run_tests! {
     fn non_spoofed_urls_result_in_search_gateway_success(search_gateway) {
         let http_port = start_http_server(vec![RESP.to_owned(), RESP_CONTROL_SCHEMA.to_owned()]).await;
         let local_free_port = start_broadcast_reply_sender(format!("http://127.0.0.1:{http_port}")).await;
-        let options = default_options_with_using_free_port(local_free_port);
+        let options = default_options_with_using_free_port(local_free_port).await;
         assert!(search_gateway(options).await.is_ok());
     }
 }

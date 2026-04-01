@@ -2,7 +2,7 @@ pub mod messages;
 pub mod options;
 pub mod parsing;
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 pub use self::options::SearchOptions;
 

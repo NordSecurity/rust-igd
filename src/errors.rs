@@ -245,6 +245,9 @@ pub enum SearchError {
     #[error("Error parsing URI: {0}")]
     /// Invalid uri
     InvalidUri(#[from] url::ParseError),
+    #[error("Invalid HTTP Uri: {0}")]
+    /// Invalid HTTP Uri
+    InvalidHttpUri(#[from] http::uri::InvalidUri),
     #[error("The uri is missing the host: {0}")]
     /// Uri is missing host
     UrlMissingHost(reqwest::Url),
@@ -265,6 +268,9 @@ pub enum SearchError {
         /// The IP which the receiving packet pretended to be from
         url_host: String,
     },
+    #[error("HTTP transport error: {0}")]
+    /// HTTP transport error
+    HttpError(String),
 }
 
 #[cfg(feature = "aio")]
