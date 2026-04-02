@@ -39,7 +39,14 @@ pub async fn start_broadcast_reply_sender(location: String) -> u16 {
 
 pub async fn default_options_with_using_free_port(port: u16) -> SearchOptions {
     let broadcast_ip: IpAddr = [239u8, 255, 255, 250].into();
+
+    // We don't want to use the standard 1900 port, to avoid any collisions with
+    // already existing upnp gateways in the network of the host machine (eg. your router)
+    #[cfg(not(target_os = "windows"))]
     let free_broadcast_port = find_free_port(broadcast_ip).await;
+    #[cfg(target_os = "windows")]
+    let free_broadcast_port = 49012; // Windows doesn't allow for binding to broadcast addresses using port 0
+
     SearchOptions {
         bind_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)),
         timeout: Some(Duration::from_secs(5)),
