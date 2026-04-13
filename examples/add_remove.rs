@@ -6,8 +6,8 @@ extern crate igd;
 fn main() {
     match igd::search_gateway(Default::default()) {
         Err(ref err) => match *err {
-            igd::SearchError::IoError(ref ioe) => println!("IoError: {}", ioe),
-            _ => println!("{:?}", err),
+            igd::SearchError::IoError(ref ioe) => println!("IoError: {ioe}"),
+            _ => println!("{err:?}"),
         },
         Ok(gateway) => {
             let args: Vec<_> = env::args().collect();
@@ -22,11 +22,11 @@ fn main() {
             let local_addr = SocketAddrV4::new(local_ip, local_port);
 
             match gateway.add_port(igd::PortMappingProtocol::TCP, remote_port, local_addr, 60, "crust") {
-                Err(ref err) => println!("{:?}", err),
+                Err(ref err) => println!("{err:?}"),
                 Ok(()) => {
                     println!("AddPortMapping successful.");
                     match gateway.remove_port(igd::PortMappingProtocol::TCP, remote_port) {
-                        Err(ref err) => println!("Error removing: {:?}", err),
+                        Err(ref err) => println!("Error removing: {err:?}"),
                         Ok(_) => println!("DeletePortMapping successful."),
                     }
                 }

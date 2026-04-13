@@ -15,8 +15,8 @@ use tokio::net::{TcpListener, UdpSocket};
 async fn find_free_port(ip: IpAddr) -> u16 {
     // Not 100% reliable way to find a free port number, but should be good enough
     let sock = UdpSocket::bind((ip, 0)).await.unwrap();
-    let ret = sock.local_addr().unwrap().port();
-    ret
+
+    sock.local_addr().unwrap().port()
 }
 
 pub async fn start_broadcast_reply_sender(location: String) -> u16 {
@@ -56,7 +56,7 @@ pub async fn default_options_with_using_free_port(port: u16) -> SearchOptions {
     }
 }
 
-const RESP_SPOOFED_SCPDURL: &'static str = r#"<?xml version="1.0" ?>
+const RESP_SPOOFED_SCPDURL: &str = r#"<?xml version="1.0" ?>
     <root xmlns="urn:schemas-upnp-org:device-1-0">
         <device>
             <deviceList>
@@ -78,7 +78,7 @@ const RESP_SPOOFED_SCPDURL: &'static str = r#"<?xml version="1.0" ?>
     </root>
     "#;
 
-const RESP_SPOOFED_CONTROL_URL: &'static str = r#"<?xml version="1.0" ?>
+const RESP_SPOOFED_CONTROL_URL: &str = r#"<?xml version="1.0" ?>
     <root xmlns="urn:schemas-upnp-org:device-1-0">
         <device>
             <deviceList>
@@ -100,7 +100,7 @@ const RESP_SPOOFED_CONTROL_URL: &'static str = r#"<?xml version="1.0" ?>
     </root>
     "#;
 
-const RESP: &'static str = r#"<?xml version="1.0" ?>
+const RESP: &str = r#"<?xml version="1.0" ?>
     <root xmlns="urn:schemas-upnp-org:device-1-0">
         <device>
             <deviceList>
@@ -122,7 +122,7 @@ const RESP: &'static str = r#"<?xml version="1.0" ?>
     </root>
     "#;
 
-const RESP_CONTROL_SCHEMA: &'static str = r#"<?xml version="1.0" ?>
+const RESP_CONTROL_SCHEMA: &str = r#"<?xml version="1.0" ?>
     <root xmlns="urn:schemas-upnp-org:device-1-0">
     <actionList>
         <action>
@@ -151,7 +151,7 @@ async fn start_http_server(responses: Vec<String>) -> u16 {
                 .serve_connection(io, service_fn(|r| async { handler(r) }))
                 .await
             {
-                eprintln!("Error serving connection: {:?}", err);
+                eprintln!("Error serving connection: {err:?}");
             }
         }
     });

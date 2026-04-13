@@ -4,7 +4,7 @@ extern crate igd;
 
 fn main() {
     match igd::search_gateway(Default::default()) {
-        Err(ref err) => println!("Error: {}", err),
+        Err(ref err) => println!("Error: {err}"),
         Ok(gateway) => {
             let local_addr = match std::env::args().nth(1) {
                 Some(local_addr) => local_addr,
@@ -15,10 +15,10 @@ fn main() {
 
             match gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, 60, "add_port example") {
                 Err(ref err) => {
-                    println!("There was an error! {}", err);
+                    println!("There was an error! {err}");
                 }
                 Ok(port) => {
-                    println!("It worked! Got port {}", port);
+                    println!("It worked! Got port {port}");
                 }
             }
         }
