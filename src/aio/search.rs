@@ -39,7 +39,7 @@ pub async fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchErr
     let addr_v4 = match addr {
         SocketAddr::V4(a) => Ok(a),
         _ => {
-            warn!("unsupported IPv6 gateway response from addr: {}", addr);
+            warn!("unsupported IPv6 gateway response from addr: {addr}");
             Err(SearchError::InvalidResponse)
         }
     }?;
@@ -85,13 +85,13 @@ async fn send_search_request(socket: &mut UdpSocket, addr: SocketAddr) -> Result
 async fn receive_search_response(socket: &mut UdpSocket) -> Result<(Vec<u8>, SocketAddr), SearchError> {
     let mut buff = [0u8; MAX_RESPONSE_SIZE];
     let (n, from) = socket.recv_from(&mut buff).await?;
-    debug!("received broadcast response from: {}", from);
+    debug!("received broadcast response from: {from}");
     Ok((buff[..n].to_vec(), from))
 }
 
 // Handle a UDP response message
 fn handle_broadcast_resp(from: &SocketAddr, data: &[u8]) -> Result<(SocketAddr, String), SearchError> {
-    debug!("handling broadcast response from: {}", from);
+    debug!("handling broadcast response from: {from}");
 
     // Convert response to text
     let text = std::str::from_utf8(data).map_err(SearchError::from)?;
@@ -103,9 +103,9 @@ fn handle_broadcast_resp(from: &SocketAddr, data: &[u8]) -> Result<(SocketAddr, 
 }
 
 async fn get_control_urls(addr: &SocketAddr, path: &str) -> Result<(String, String), SearchError> {
-    debug!("requesting control url from: http://{}{}", addr, path);
+    debug!("requesting control url from: http://{addr}{path}");
     let body = http_get_bounded(addr, path, MAX_HTTP_RESPONSE_SIZE).await?;
-    debug!("handling control response from: {}", addr);
+    debug!("handling control response from: {addr}");
     parsing::parse_control_urls(std::io::Cursor::new(body))
 }
 
@@ -113,9 +113,9 @@ async fn get_control_schemas(
     addr: &SocketAddr,
     control_schema_url: &str,
 ) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    debug!("requesting control schema from: http://{}{}", addr, control_schema_url);
+    debug!("requesting control schema from: http://{addr}{control_schema_url}");
     let body = http_get_bounded(addr, control_schema_url, MAX_HTTP_RESPONSE_SIZE).await?;
-    debug!("handling schema response from: {}", addr);
+    debug!("handling schema response from: {addr}");
     parsing::parse_schemas(std::io::Cursor::new(body))
 }
 
@@ -123,7 +123,7 @@ async fn http_get_bounded(addr: &SocketAddr, path: &str, memory_upper_bound: usi
     use http_body_util::BodyExt;
 
     let authority = addr.to_string();
-    let uri: Uri = format!("http://{}{}", addr, path).parse()?;
+    let uri: Uri = format!("http://{addr}{path}").parse()?;
 
     let url: url::Url = uri.to_string().parse()?;
     validate_url(addr.ip(), &url)?;
@@ -188,18 +188,14 @@ mod tests {
         service::service_fn,
     };
     use hyper_util::rt::TokioIo;
-    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+    use rand::{distr::Alphanumeric, rng, Rng};
     use tokio::net::TcpListener;
     use tokio_stream::wrappers::ReceiverStream;
 
     use super::*;
 
     fn generate_random_body(n: usize) -> Vec<u8> {
-        let s: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(n)
-            .map(char::from)
-            .collect();
+        let s: String = rng().sample_iter(&Alphanumeric).take(n).map(char::from).collect();
         s.into_bytes()
     }
 

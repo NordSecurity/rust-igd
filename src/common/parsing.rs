@@ -329,10 +329,7 @@ pub fn parse_get_generic_port_mapping_entry(
     let response = result?;
     let xml = response.xml;
     let make_err = |msg: String| || GetGenericPortMappingEntryError::RequestError(RequestError::InvalidResponse(msg));
-    let extract_field = |field: &str| {
-        xml.get_child(field)
-            .ok_or_else(make_err(format!("{} is missing", field)))
-    };
+    let extract_field = |field: &str| xml.get_child(field).ok_or_else(make_err(format!("{field} is missing")));
     let remote_host = extract_field("NewRemoteHost")?
         .get_text()
         .map(|c| c.into_owned())

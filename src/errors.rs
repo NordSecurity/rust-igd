@@ -120,7 +120,7 @@ impl fmt::Display for GetExternalIpError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             GetExternalIpError::ActionNotAuthorized => write!(f, "The client is not authorized to remove the port"),
-            GetExternalIpError::RequestError(ref e) => write!(f, "Request Error. {}", e),
+            GetExternalIpError::RequestError(ref e) => write!(f, "Request Error. {e}"),
         }
     }
 }
@@ -142,7 +142,7 @@ impl fmt::Display for RemovePortError {
         match *self {
             RemovePortError::ActionNotAuthorized => write!(f, "The client is not authorized to remove the port"),
             RemovePortError::NoSuchPortMapping => write!(f, "The port was not mapped"),
-            RemovePortError::RequestError(ref e) => write!(f, "Request error. {}", e),
+            RemovePortError::RequestError(ref e) => write!(f, "Request error. {e}"),
         }
     }
 }
@@ -180,7 +180,7 @@ impl fmt::Display for AddAnyPortError {
             AddAnyPortError::DescriptionTooLong => {
                 write!(f, "The description was too long for the gateway to handle.")
             }
-            AddAnyPortError::RequestError(ref e) => write!(f, "Request error. {}", e),
+            AddAnyPortError::RequestError(ref e) => write!(f, "Request error. {e}"),
         }
     }
 }
@@ -213,7 +213,7 @@ impl fmt::Display for AddPortError {
                 "The gateway only supports permanent leases (ie. a `lease_duration` of 0),"
             ),
             AddPortError::DescriptionTooLong => write!(f, "The description was too long for the gateway to handle."),
-            AddPortError::RequestError(ref e) => write!(f, "Request error. {}", e),
+            AddPortError::RequestError(ref e) => write!(f, "Request error. {e}"),
         }
     }
 }

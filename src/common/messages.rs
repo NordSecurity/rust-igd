@@ -27,7 +27,7 @@ const MESSAGE_TAIL: &str = r#"</s:Body>
 </s:Envelope>"#;
 
 fn format_message(body: String) -> String {
-    format!("{}{}{}", MESSAGE_HEAD, body, MESSAGE_TAIL)
+    format!("{MESSAGE_HEAD}{body}{MESSAGE_TAIL}")
 }
 
 pub fn format_get_external_ip_message() -> String {
@@ -62,24 +62,19 @@ pub fn format_add_any_port_mapping_message(
                 "NewProtocol" => protocol.to_string(),
                 "NewRemoteHost" => "".to_string(),
                 unknown => {
-                    warn!("Unknown argument: {}", unknown);
+                    warn!("Unknown argument: {unknown}");
                     return None;
                 }
             };
-            Some(format!(
-                "<{argument}>{value}</{argument}>",
-                argument = argument,
-                value = value
-            ))
+            Some(format!("<{argument}>{value}</{argument}>"))
         })
         .collect::<Vec<_>>()
         .join("\n");
 
     format_message(format!(
         r#"<u:AddAnyPortMapping xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1">
-        {}
+        {args}
         </u:AddAnyPortMapping>"#,
-        args,
     ))
 }
 
@@ -104,24 +99,19 @@ pub fn format_add_port_mapping_message(
                 "NewProtocol" => protocol.to_string(),
                 "NewRemoteHost" => "".to_string(),
                 unknown => {
-                    warn!("Unknown argument: {}", unknown);
+                    warn!("Unknown argument: {unknown}");
                     return None;
                 }
             };
-            Some(format!(
-                "<{argument}>{value}</{argument}>",
-                argument = argument,
-                value = value
-            ))
+            Some(format!("<{argument}>{value}</{argument}>"))
         })
         .collect::<Vec<_>>()
         .join("\n");
 
     format_message(format!(
         r#"<u:AddPortMapping xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1">
-        {}
+        {args}
         </u:AddPortMapping>"#,
-        args,
     ))
 }
 
@@ -134,32 +124,26 @@ pub fn format_delete_port_message(schema: &[String], protocol: PortMappingProtoc
                 "NewProtocol" => protocol.to_string(),
                 "NewRemoteHost" => "".to_string(),
                 unknown => {
-                    warn!("Unknown argument: {}", unknown);
+                    warn!("Unknown argument: {unknown}");
                     return None;
                 }
             };
-            Some(format!(
-                "<{argument}>{value}</{argument}>",
-                argument = argument,
-                value = value
-            ))
+            Some(format!("<{argument}>{value}</{argument}>"))
         })
         .collect::<Vec<_>>()
         .join("\n");
 
     format_message(format!(
         r#"<u:DeletePortMapping xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1">
-        {}
+        {args}
         </u:DeletePortMapping>"#,
-        args,
     ))
 }
 
 pub fn formate_get_generic_port_mapping_entry_message(port_mapping_index: u32) -> String {
     format_message(format!(
         r#"<u:GetGenericPortMappingEntry xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1">
-        <NewPortMappingIndex>{}</NewPortMappingIndex>
-        </u:GetGenericPortMappingEntry>"#,
-        port_mapping_index
+        <NewPortMappingIndex>{port_mapping_index}</NewPortMappingIndex>
+        </u:GetGenericPortMappingEntry>"#
     ))
 }

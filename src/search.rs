@@ -38,17 +38,13 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
     check_is_ip_spoofed(&from, &addr.into())?;
 
     let (control_schema_url, control_url) = get_control_urls(&addr, &root_url).map_err(|e| {
-        debug!(
-            "Error has occurred while getting control urls. error: {}, addr: {}, root_url: {}",
-            e, addr, root_url
-        );
+        debug!("Error has occurred while getting control urls. error: {e}, addr: {addr}, root_url: {root_url}");
         e
     })?;
 
     let control_schema = get_control_schemas(&addr, &control_schema_url).map_err(|e| {
         debug!(
-            "Error has occurred while getting schemas. error: {}, addr: {}, control_schema_url: {}",
-            e, addr, control_schema_url
+            "Error has occurred while getting schemas. error: {e}, addr: {addr}, control_schema_url: {control_schema_url}"
         );
         e
     })?;
@@ -65,19 +61,19 @@ pub fn search_gateway(options: SearchOptions) -> Result<Gateway, SearchError> {
 
     validate_url((*addr.ip()).into(), &gateway_url)?;
 
-    return Ok(gateway);
+    Ok(gateway)
 }
 
 fn get_control_urls(addr: &SocketAddrV4, path: &str) -> Result<(String, String), SearchError> {
-    let url: reqwest::Url = format!("http://{}{}", addr, path).parse()?;
+    let url: reqwest::Url = format!("http://{addr}{path}").parse()?;
 
     validate_url((*addr.ip()).into(), &url)?;
 
-    debug!("requesting control url from: {:?}", url);
+    debug!("requesting control url from: {url:?}");
     let client = reqwest::blocking::Client::new();
     let resp = client.get(url).send()?;
 
-    debug!("handling control response from: {}", addr);
+    debug!("handling control response from: {addr}");
     let body = resp.bytes()?;
     parsing::parse_control_urls(body.as_ref())
 }
@@ -86,15 +82,15 @@ fn get_control_schemas(
     addr: &SocketAddrV4,
     control_schema_url: &str,
 ) -> Result<HashMap<String, Vec<String>>, SearchError> {
-    let url: reqwest::Url = format!("http://{}{}", addr, control_schema_url).parse()?;
+    let url: reqwest::Url = format!("http://{addr}{control_schema_url}").parse()?;
 
     validate_url((*addr.ip()).into(), &url)?;
 
-    debug!("requesting control schema from: {}", url);
+    debug!("requesting control schema from: {url}");
     let client = reqwest::blocking::Client::new();
     let resp = client.get(url).send()?;
 
-    debug!("handling schema response from: {}", addr);
+    debug!("handling schema response from: {addr}");
 
     let body = resp.bytes()?;
     parsing::parse_schemas(body.as_ref())

@@ -26,7 +26,7 @@ pub struct Gateway {
 
 impl Gateway {
     async fn perform_request(&self, header: &str, body: &str, ok: &str) -> Result<RequestReponse, RequestError> {
-        let url = format!("{}", self);
+        let url = format!("{self}");
         let text = soap::send_async(&url, soap::Action::new(header), body).await?;
         parsing::parse_response(text, ok)
     }
