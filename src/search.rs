@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
 use std::net::{SocketAddrV4, UdpSocket};
 use std::str::FromStr;
 
-use crate::common::{messages, parsing, SearchOptions};
+use crate::common::{check_is_ip_spoofed, messages, parsing, validate_url, SearchOptions};
 use crate::errors::SearchError;
 use crate::gateway::Gateway;
 
@@ -94,49 +93,4 @@ fn get_control_schemas(
 
     let body = resp.bytes()?;
     parsing::parse_schemas(body.as_ref())
-}
-
-pub fn check_is_ip_spoofed(from: &SocketAddr, addr: &SocketAddr) -> Result<(), SearchError> {
-    match (from, addr) {
-        (SocketAddr::V4(src_ip), SocketAddr::V4(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V6(url_ip)) => {
-            if src_ip.ip() != url_ip.ip() {
-                return Err(SearchError::SpoofedIp {
-                    src_ip: (*src_ip.ip()).into(),
-                    url_ip: (*url_ip.ip()).into(),
-                });
-            }
-        }
-        (SocketAddr::V6(src_ip), SocketAddr::V4(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-        (SocketAddr::V4(src_ip), SocketAddr::V6(url_ip)) => {
-            return Err(SearchError::SpoofedIp {
-                src_ip: (*src_ip.ip()).into(),
-                url_ip: (*url_ip.ip()).into(),
-            })
-        }
-    }
-    Ok(())
-}
-
-pub fn validate_url(src_ip: IpAddr, url: &reqwest::Url) -> Result<(), SearchError> {
-    match url.host_str() {
-        Some(url_host) if url_host != src_ip.to_string() => Err(SearchError::SpoofedUrl {
-            src_ip,
-            url_host: url_host.to_owned(),
-        }),
-        None => Err(SearchError::UrlMissingHost(url.clone())),
-        _ => Ok(()),
-    }
 }

@@ -1,4 +1,6 @@
-use crate::{search_gateway, SearchError, SearchOptions};
+#[cfg(feature = "blocking")]
+use crate::search_gateway;
+use crate::{SearchError, SearchOptions};
 use http_body_util::Full;
 use hyper::{body::Bytes, service::service_fn, Request, Response};
 use hyper_util::rt::TokioIo;
@@ -164,6 +166,7 @@ macro_rules! run_tests {
     ($(fn $name:ident($sg:ident) { $($test_body:tt)* })*) => {
         $(
             paste! {
+                #[cfg(feature = "blocking")]
                 #[test(tokio::test)]
                 async fn [<blocking_ $name>]() {
                     async fn aux<F, Fut>($sg: F)
