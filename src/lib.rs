@@ -19,9 +19,11 @@ pub use self::errors::{
     SearchError,
 };
 pub use self::errors::{Error, Result};
+#[cfg(feature = "blocking")]
 pub use self::gateway::Gateway;
 
 // search of gateway
+#[cfg(feature = "blocking")]
 pub use self::search::search_gateway;
 
 #[cfg(feature = "aio")]
@@ -29,7 +31,9 @@ pub mod aio;
 
 mod common;
 mod errors;
+#[cfg(feature = "blocking")]
 mod gateway;
+#[cfg(feature = "blocking")]
 mod search;
 
 use std::fmt;

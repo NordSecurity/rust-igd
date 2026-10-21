@@ -11,9 +11,8 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::time::timeout;
 
 use crate::aio::Gateway;
-use crate::common::{messages, parsing, SearchOptions};
+use crate::common::{check_is_ip_spoofed, messages, parsing, validate_url, SearchOptions};
 use crate::errors::SearchError;
-use crate::search::{check_is_ip_spoofed, validate_url};
 
 const MAX_HTTP_RESPONSE_SIZE: usize = 256 * 1024;
 const MAX_RESPONSE_SIZE: usize = 1500;
